@@ -4,5 +4,12 @@
     "python.linting.pylintArgs": [
         "--errors-only",
         "--generated-members=numpy.* ,torch.* ,cv2.* , cv.*"
-    ]
+    ],
+    "files.watcherExclude": {
+        "**/.git/objects/**": true,
+        "**/.git/subtree-cache/**": true,
+        "**/node_modules/*/**": true,
+        "**/.hg/store/**": true,
+        "**/egs/**": true
+    }
 }
