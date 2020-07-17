@@ -1,4 +1,5 @@
 """
+Author: Junzhe Zhu
 This script makes triplets for training speaker embedding using triplet loss
 """
 from glob import glob

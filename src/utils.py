@@ -4,7 +4,20 @@
 import math
 
 import torch
+def pad_to_integer(input, kernel_size, stride):
+    outer_dimensions = list(input.shape[:-1])
+    T = input.shape[-1]
+    num_chunks = math.ceil((T-kernel_size)/stride) + 1
+    pad_len = (num_chunks - 1)*stride + kernel_size - T
+    if pad_len > 0:
+        padding = torch.zeros(outer_dimensions + [pad_len]).to(input.device)
+        input = torch.cat((input, padding), dim = -1)
+    return input
 
+def pad_segment(mixture_w, K, P):
+    # K: chunk size P: chunk step
+    mixture_w = pad_to_integer(mixture_w, K, P)
+    return mixture_w.unfold(-1, K, P).permute((0, 1, 3, 2))
 
 def overlap_and_add(signal, frame_step):
     """Reconstructs a signal from a framed representation.
@@ -34,10 +47,9 @@ def overlap_and_add(signal, frame_step):
     output_size = frame_step * (frames - 1) + frame_length
     output_subframes = output_size // subframe_length
 
-    subframe_signal = signal.view(*outer_dimensions, -1, subframe_length)
+    subframe_signal = signal.contiguous().view(*outer_dimensions, -1, subframe_length)
 
-    frame = torch.arange(0, output_subframes).unfold(0, subframes_per_frame, subframe_step)
-    frame = signal.new_tensor(frame).long()  # signal may in GPU or CPU
+    frame = torch.arange(0, output_subframes, dtype = torch.long).unfold(0, subframes_per_frame, subframe_step).to(signal.device)
     frame = frame.contiguous().view(-1)
 
     result = signal.new_zeros(*outer_dimensions, output_subframes, subframe_length)

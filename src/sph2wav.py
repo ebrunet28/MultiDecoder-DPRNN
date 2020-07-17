@@ -1,4 +1,5 @@
 """
+Author: Junzhe Zhu
 This script uses sph2pipe to turn all the wv1 files into wav files. Apparently wv1 and wv2 files are the same, just recorded with different mics
 This script uses multiprocessing
 """

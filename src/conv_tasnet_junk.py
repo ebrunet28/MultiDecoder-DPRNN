@@ -211,15 +211,15 @@ class TemporalConvNet(nn.Module):
 
 
 class TemporalBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size,
+    def __init__(self, in_channels, N, kernel_size,
                  stride, padding, dilation, norm_type="gLN", causal=False):
         super(TemporalBlock, self).__init__()
         # [M, B, K] -> [M, H, K]
-        conv1x1 = nn.Conv1d(in_channels, out_channels, 1, bias=False)
+        conv1x1 = nn.Conv1d(in_channels, N, 1, bias=False)
         prelu = nn.PReLU()
-        norm = chose_norm(norm_type, out_channels)
+        norm = chose_norm(norm_type, N)
         # [M, H, K] -> [M, B, K]
-        dsconv = DepthwiseSeparableConv(out_channels, in_channels, kernel_size,
+        dsconv = DepthwiseSeparableConv(N, in_channels, kernel_size,
                                         stride, padding, dilation, norm_type,
                                         causal)
         # Put together
@@ -240,7 +240,7 @@ class TemporalBlock(nn.Module):
 
 
 class DepthwiseSeparableConv(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size,
+    def __init__(self, in_channels, N, kernel_size,
                  stride, padding, dilation, norm_type="gLN", causal=False):
         super(DepthwiseSeparableConv, self).__init__()
         # Use `groups` option to implement depthwise convolution
@@ -254,7 +254,7 @@ class DepthwiseSeparableConv(nn.Module):
         prelu = nn.PReLU()
         norm = chose_norm(norm_type, in_channels)
         # [M, H, K] -> [M, B, K]
-        pointwise_conv = nn.Conv1d(in_channels, out_channels, 1, bias=False)
+        pointwise_conv = nn.Conv1d(in_channels, N, 1, bias=False)
         # Put together
         if causal:
             self.net = nn.Sequential(depthwise_conv, chomp, prelu, norm,
