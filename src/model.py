@@ -33,8 +33,7 @@ class MulCatModel(nn.Module):
         self.N, self.L, self.K, self.P, self.H, self.B, self.C = N, L, K, P, H, B, C
         # Components
         self.encoder = Encoder(L, N)
-        self.separator = [MulCat_Block(N, H, C) for _ in range(B)]
-        self.separator = torch.nn.Sequential(*self.separator)
+        self.separator = nn.ModuleList([MulCat_Block(N, H, C) for _ in range(B)])
         self.decoder = Decoder(N, L, K, P, C)
         # init
         for p in self.parameters():
@@ -48,15 +47,19 @@ class MulCatModel(nn.Module):
         Returns:
             est_source: [M, C, T]
         """
+        outputs = []
         mixture_w = self.encoder(mixture)
+        T_origin = mixture.size(-1)
         separator_input = pad_segment(mixture_w, self.K, self.P)
-        est_mask = self.separator(separator_input)
-        est_source = self.decoder(mixture_w, est_mask)
+        for block in self.separator:
+            separator_input = block(separator_input)
+            est_source = self.decoder(mixture_w, separator_input)
+            est_source = est_source[..., :T_origin] # undo padding
+            outputs.append(est_source)
 
         # T changed after conv1d in encoder, fix it here
-        T_origin = mixture.size(-1)
-        est_source = est_source[..., :T_origin]
-        return est_source
+        
+        return outputs
 
     @classmethod
     def load_model(cls, path):
@@ -156,7 +159,6 @@ class Decoder(nn.Module): # there's a disagreement between variable speaker sepa
         est_mask = est_mask.sigmoid()
         # [M, C, N, T1]
         source_w = torch.unsqueeze(mixture_w, 1) * est_mask  
-        print('source_w size', source_w.size())
         # [M*C, N, T1]
         source_w = source_w.view(M*self.C, N, T1)
         # [M*C, T]
@@ -248,37 +250,39 @@ class MulCat_Block(nn.Module):
 if __name__ == "__main__":
     torch.manual_seed(123)
     M = 2
-    N = 64 
-    L = 16 
-    K = 100
-    P = 50 
-    H = 128 
-    B = 6
-    C = 2
     T = 40001
     mixture = torch.rand(M, T)
     print('mixture size', mixture.size())
-    # test Encoder
-    encoder = Encoder(L, N)
-    mixture_w = encoder(mixture)
-    print('mixture encoding size', mixture_w.size())
 
-    separator_input = pad_segment(mixture_w, K, P)
-    print('separator_input size', separator_input.size())
+    # N = 64 
+    # L = 16 
+    # K = 100
+    # P = 50 
+    # H = 128 
+    # B = 6
+    # C = 2
+
+    # # test Encoder
+    # encoder = Encoder(L, N)
+    # mixture_w = encoder(mixture)
+    # print('mixture encoding size', mixture_w.size())
+
+    # separator_input = pad_segment(mixture_w, K, P)
+    # print('separator_input size', separator_input.size())
 
 
-    # test TemporalConvNet
-    separator = MulCat_Block(N, H, C)
-    est_mask = separator(separator_input)
-    print('est_mask size', est_mask.size())
+    # # test TemporalConvNet
+    # separator = MulCat_Block(N, H, C)
+    # est_mask = separator(separator_input)
+    # print('est_mask size', est_mask.size())
 
-    # test Decoder
-    decoder = Decoder(N, L, K, P, C)
-    est_source = decoder(mixture_w, est_mask)
-    print('est_source size', est_source.size())
+    # # test Decoder
+    # decoder = Decoder(N, L, K, P, C)
+    # est_source = decoder(mixture_w, est_mask)
+    # print('est_source size', est_source.size())
 
     # test Conv-TasNet
     model = MulCatModel().cuda()
-    est_source = model(mixture.cuda())
-    print('est_source size', est_source.size())
+    output = model(mixture.cuda())
+    print('model output size', [est_source.size() for est_source in output])
 
