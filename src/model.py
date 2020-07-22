@@ -1,5 +1,5 @@
-# Created on 2018/12
-# Author: Kaituo XU
+# Created on 2020/7
+# Author: Junzhe Zhu, Kaituo XU, Jusper Lee
 
 import torch
 import torch.nn as nn
@@ -24,9 +24,6 @@ class MulCatModel(nn.Module):
             H: Number of LSTM hidden channels
             B: Number of Blocks
             C: Number of speakers
-            norm_type: BN, gLN, cLN
-            causal: causal or non-causal
-            mask_nonlinear: use which non-linear function to generate mask
         """
         super().__init__()
         # Hyper-parameter
@@ -62,13 +59,13 @@ class MulCatModel(nn.Module):
         return outputs
 
     @classmethod
-    def load_model(cls, path):
+    def load_model(cls, path): # obsolete, might fix later
         # Load to CPU
         package = torch.load(path, map_location=lambda storage, loc: storage)
         model = cls.load_model_from_package(package)
         return model
 
-    @classmethod
+    @classmethod # obsolete, might fix later
     def load_model_from_package(cls, package):
         model = cls(package['N'], package['L'], package['B'], package['H'],
                     package['P'], package['X'], package['R'], package['C'],
@@ -80,11 +77,6 @@ class MulCatModel(nn.Module):
     @staticmethod
     def serialize(model, optimizer, epoch, tr_loss=None, cv_loss=None):
         package = {
-            # hyper-parameter
-            'N': model.N, 'L': model.L, 'B': model.B, 'H': model.H,
-            'P': model.P, 'X': model.X, 'R': model.R, 'C': model.C,
-            'norm_type': model.norm_type, 'causal': model.causal,
-            'mask_nonlinear': model.mask_nonlinear,
             # state
             'state_dict': model.state_dict(),
             'optim_dict': optimizer.state_dict(),

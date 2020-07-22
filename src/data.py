@@ -9,7 +9,7 @@ from scipy.io.wavfile import read
 from time import time
 
 class MixtureDataset(data.Dataset):
-    def __init__(self, txtfile, sample_rate=8000, segment=4.0, cv_maxlen=8.0):
+    def __init__(self, txtfile, sample_rate=8000, segment=4.0, cv_maxlen=8.0): # segment and cv_maxlen not implemented
         """
         each line of textfile comes in the form of:
             filename1, dB1, filename2, dB2, ...
@@ -53,7 +53,7 @@ def _collate_fn(batch):
         ilens.append(max(*[len(source) for source in sources]))
 
     maxlen = max(ilens) # compute length to pad to
-    ilens = torch.Tensor(np.array(ilens)).float()
+    ilens = torch.Tensor(np.array(ilens)).int()
 
     for sources, scales in batch:
         source_pad = np.array([pad(audio, maxlen) for audio in sources]) # one example, CXT
@@ -63,6 +63,7 @@ def _collate_fn(batch):
         mixtures.append(mixture)
 
     mixtures = torch.stack(mixtures, dim = 0)
+    sources_pad = torch.stack(sources_pad, dim = 0)
 
     return mixtures, ilens, sources_pad
 
@@ -78,6 +79,6 @@ if __name__ == "__main__":
     dataloader = torch.utils.data.DataLoader(dataset, batch_size = 32, collate_fn = _collate_fn)
     for mixtures, ilens, sources_pad in dataloader:
         start = time()
-        print(mixtures.shape, ilens.shape, torch.stack(sources_pad, dim = 0).shape)
+        print(mixtures.shape, ilens.shape, sources_pad.shape)
         print(time() - start)
     print(len(dataset))
