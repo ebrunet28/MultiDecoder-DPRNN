@@ -28,12 +28,12 @@ momentum = 0.0
 l2 = 0.0 # weight decya
 save_folder = os.path.join(root, 'models')
 checkpoint = 1
-continue_from = os.path.join(save_folder, "config4.pth")
-model_path = config + "_best.pth"
+continue_from = os.path.join(save_folder, "config4.pth") # if not exist, randomly initialize
+model_path = config + "_best.pth" # best model save path
 print_freq = 10
 comment = config + ' multiple decoder with the same TCN. Random Initialization'
 log_dir = os.path.join(root, 'runs', time.strftime("%Y%m%d-%H%M%S")+comment)
-use_onoff = True # hungarian model or DPRNN? useless if multidecoder=True
+use_onoff = True # hungarian model if on, DPRNN if off. useless if multidecoder=True
 multiloss = True
 mul = True
 cat = True
