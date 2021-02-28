@@ -1,5 +1,6 @@
 import sys
-sys.path.append('../')
+
+sys.path.append("../")
 
 import torch.nn.functional as F
 from torch import nn
@@ -7,10 +8,11 @@ import torch
 import warnings
 import time
 
-warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore")
+
 
 class GlobalLayerNorm(nn.Module):
-    '''
+    """
        Calculate Global Layer Normalization
        dim: (int or list or torch.Size) –
           input shape from an expected input of size
@@ -18,7 +20,7 @@ class GlobalLayerNorm(nn.Module):
        elementwise_affine: a boolean value that when set to True, 
           this module has learnable per-element affine parameters 
           initialized to ones (for weights) and zeros (for biases).
-    '''
+    """
 
     def __init__(self, dim, shape, eps=1e-8, elementwise_affine=True):
         super(GlobalLayerNorm, self).__init__()
@@ -34,8 +36,8 @@ class GlobalLayerNorm(nn.Module):
                 self.weight = nn.Parameter(torch.ones(self.dim, 1, 1))
                 self.bias = nn.Parameter(torch.zeros(self.dim, 1, 1))
         else:
-            self.register_parameter('weight', None)
-            self.register_parameter('bias', None)
+            self.register_parameter("weight", None)
+            self.register_parameter("bias", None)
 
     def forward(self, x):
         # x = N x C x K x S or N x C x L
@@ -44,40 +46,42 @@ class GlobalLayerNorm(nn.Module):
         # gln: mean,var N x 1 x 1
         if x.dim() == 4:
             mean = torch.mean(x, (1, 2, 3), keepdim=True)
-            var = torch.mean((x-mean)**2, (1, 2, 3), keepdim=True)
+            var = torch.mean((x - mean) ** 2, (1, 2, 3), keepdim=True)
             if self.elementwise_affine:
-                x = self.weight*(x-mean)/torch.sqrt(var+self.eps)+self.bias
+                x = self.weight * (x - mean) / torch.sqrt(var + self.eps) + self.bias
             else:
-                x = (x-mean)/torch.sqrt(var+self.eps)
+                x = (x - mean) / torch.sqrt(var + self.eps)
         if x.dim() == 3:
             mean = torch.mean(x, (1, 2), keepdim=True)
-            var = torch.mean((x-mean)**2, (1, 2), keepdim=True)
+            var = torch.mean((x - mean) ** 2, (1, 2), keepdim=True)
             if self.elementwise_affine:
-                x = self.weight*(x-mean)/torch.sqrt(var+self.eps)+self.bias
+                x = self.weight * (x - mean) / torch.sqrt(var + self.eps) + self.bias
             else:
-                x = (x-mean)/torch.sqrt(var+self.eps)
+                x = (x - mean) / torch.sqrt(var + self.eps)
         return x
 
+
 class CumulativeLayerNorm(nn.LayerNorm):
-    '''
+    """
        Calculate Cumulative Layer Normalization
        dim: you want to norm dim
        elementwise_affine: learnable per-element affine parameters 
-    '''
+    """
 
     def __init__(self, dim, elementwise_affine=True):
         super(CumulativeLayerNorm, self).__init__(
-            dim, elementwise_affine=elementwise_affine, eps=1e-8)
+            dim, elementwise_affine=elementwise_affine, eps=1e-8
+        )
 
     def forward(self, x):
         # x: N x C x K x S or N x C x L
         # N x K x S x C
         if x.dim() == 4:
-           x = x.permute(0, 2, 3, 1).contiguous()
-           # N x K x S x C == only channel norm
-           x = super().forward(x)
-           # N x C x K x S
-           x = x.permute(0, 3, 1, 2).contiguous()
+            x = x.permute(0, 2, 3, 1).contiguous()
+            # N x K x S x C == only channel norm
+            x = super().forward(x)
+            # N x C x K x S
+            x = x.permute(0, 3, 1, 2).contiguous()
         if x.dim() == 3:
             x = torch.transpose(x, 1, 2)
             # N x L x C == only channel norm
@@ -86,27 +90,35 @@ class CumulativeLayerNorm(nn.LayerNorm):
             x = torch.transpose(x, 1, 2)
         return x
 
+
 def select_norm(norm, dim, shape):
-    if norm == 'gln':
+    if norm == "gln":
         return GlobalLayerNorm(dim, shape, elementwise_affine=True)
-    if norm == 'cln':
+    if norm == "cln":
         return CumulativeLayerNorm(dim, elementwise_affine=True)
-    if norm == 'ln':
+    if norm == "ln":
         return nn.GroupNorm(1, dim, eps=1e-8)
     else:
         return nn.BatchNorm1d(dim)
 
+
 class Encoder(nn.Module):
-    '''
+    """
        Conv-Tasnet Encoder part
        kernel_size: the length of filters
        out_channels: the number of filters
-    '''
+    """
 
     def __init__(self, kernel_size, out_channels):
         super(Encoder, self).__init__()
-        self.conv1d = nn.Conv1d(in_channels=1, out_channels=out_channels,
-                                kernel_size=kernel_size, stride=kernel_size//2, groups=1, bias=False)
+        self.conv1d = nn.Conv1d(
+            in_channels=1,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=kernel_size // 2,
+            groups=1,
+            bias=False,
+        )
 
     def forward(self, x):
         """
@@ -123,8 +135,9 @@ class Encoder(nn.Module):
         x = F.relu(x)
         return x
 
+
 class Dual_RNN_Block(nn.Module):
-    '''
+    """
        Implementation of the intra-RNN and the inter-RNN
        input:
             in_channels: The number of expected features in the input x
@@ -135,48 +148,88 @@ class Dual_RNN_Block(nn.Module):
                      of each LSTM layer except the last layer, 
                      with dropout probability equal to dropout. Default: 0
             bidirectional: If True, becomes a bidirectional LSTM. Default: False
-    '''
+    """
 
-    def __init__(self, out_channels,
-                 hidden_channels, rnn_type, norm,
-                 dropout, bidirectional, mulcat):
+    def __init__(
+        self,
+        out_channels,
+        hidden_channels,
+        rnn_type,
+        norm,
+        dropout,
+        bidirectional,
+        mulcat,
+    ):
         super(Dual_RNN_Block, self).__init__()
         # RNN model
         self.mul, self.cat = mulcat
         self.intra_rnn1 = getattr(nn, rnn_type)(
-            out_channels, hidden_channels, 1, batch_first=True, dropout=dropout, bidirectional=bidirectional)
+            out_channels,
+            hidden_channels,
+            1,
+            batch_first=True,
+            dropout=dropout,
+            bidirectional=bidirectional,
+        )
         self.inter_rnn1 = getattr(nn, rnn_type)(
-            out_channels, hidden_channels, 1, batch_first=True, dropout=dropout, bidirectional=bidirectional)
+            out_channels,
+            hidden_channels,
+            1,
+            batch_first=True,
+            dropout=dropout,
+            bidirectional=bidirectional,
+        )
         if self.mul:
             self.intra_rnn2 = getattr(nn, rnn_type)(
-                out_channels, hidden_channels, 1, batch_first=True, dropout=dropout, bidirectional=bidirectional)
+                out_channels,
+                hidden_channels,
+                1,
+                batch_first=True,
+                dropout=dropout,
+                bidirectional=bidirectional,
+            )
             self.inter_rnn2 = getattr(nn, rnn_type)(
-                out_channels, hidden_channels, 1, batch_first=True, dropout=dropout, bidirectional=bidirectional)
+                out_channels,
+                hidden_channels,
+                1,
+                batch_first=True,
+                dropout=dropout,
+                bidirectional=bidirectional,
+            )
         # Norm
         self.intra_norm = select_norm(norm, out_channels, 4)
         self.inter_norm = select_norm(norm, out_channels, 4)
         # Linear
         if self.cat:
             self.intra_linear = nn.Linear(
-                hidden_channels*2 + out_channels if bidirectional else hidden_channels + out_channels, out_channels)
+                hidden_channels * 2 + out_channels
+                if bidirectional
+                else hidden_channels + out_channels,
+                out_channels,
+            )
             self.inter_linear = nn.Linear(
-                hidden_channels*2 + out_channels if bidirectional else hidden_channels + out_channels, out_channels)
+                hidden_channels * 2 + out_channels
+                if bidirectional
+                else hidden_channels + out_channels,
+                out_channels,
+            )
         else:
             self.intra_linear = nn.Linear(
-                hidden_channels*2 if bidirectional else hidden_channels, out_channels)
+                hidden_channels * 2 if bidirectional else hidden_channels, out_channels
+            )
             self.inter_linear = nn.Linear(
-                hidden_channels*2 if bidirectional else hidden_channels, out_channels)
-        
+                hidden_channels * 2 if bidirectional else hidden_channels, out_channels
+            )
 
     def forward(self, x):
-        '''
+        """
            x: [B, N, K, S]
            out: [Spks, B, N, K, S]
-        '''
+        """
         B, N, K, S = x.shape
         # intra RNN
         # [BS, K, N]
-        intra_rnn = x.permute(0, 3, 2, 1).contiguous().view(B*S, K, N)
+        intra_rnn = x.permute(0, 3, 2, 1).contiguous().view(B * S, K, N)
         # [BS, K, H + N]
         self.intra_rnn1.flatten_parameters()
         intra_mul = self.intra_rnn1(intra_rnn)[0]
@@ -188,19 +241,21 @@ class Dual_RNN_Block(nn.Module):
         else:
             intra_rnn = intra_mul
         # [BS, K, N]
-        intra_rnn = self.intra_linear(intra_rnn.contiguous().view(B*S*K, -1)).view(B*S, K, -1)
+        intra_rnn = self.intra_linear(intra_rnn.contiguous().view(B * S * K, -1)).view(
+            B * S, K, -1
+        )
         # [B, S, K, N]
         intra_rnn = intra_rnn.view(B, S, K, N)
         # [B, N, K, S]
         intra_rnn = intra_rnn.permute(0, 3, 2, 1).contiguous()
         intra_rnn = self.intra_norm(intra_rnn)
-        
+
         # [B, N, K, S]
         intra_rnn = intra_rnn + x
 
         # inter RNN
         # [BK, S, N]
-        inter_rnn = intra_rnn.permute(0, 2, 3, 1).contiguous().view(B*K, S, N)
+        inter_rnn = intra_rnn.permute(0, 2, 3, 1).contiguous().view(B * K, S, N)
         # [BK, S, H + N]
         self.inter_rnn1.flatten_parameters()
         inter_mul = self.inter_rnn1(inter_rnn)[0]
@@ -213,7 +268,9 @@ class Dual_RNN_Block(nn.Module):
             inter_rnn = inter_mul
 
         # [BK, S, N]
-        inter_rnn = self.inter_linear(inter_rnn.contiguous().view(B*S*K, -1)).view(B*K, S, -1)
+        inter_rnn = self.inter_linear(inter_rnn.contiguous().view(B * S * K, -1)).view(
+            B * K, S, -1
+        )
         # [B, K, S, N]
         inter_rnn = inter_rnn.view(B, K, S, N)
         # [B, N, K, S]
@@ -224,8 +281,9 @@ class Dual_RNN_Block(nn.Module):
 
         return out
 
+
 class Dual_Path_RNN(nn.Module):
-    '''
+    """
        Implementation of the Dual-Path-RNN model
        input:
             in_channels: The number of expected features in the input x
@@ -239,11 +297,21 @@ class Dual_Path_RNN(nn.Module):
             num_layers: number of Dual-Path-Block
             K: the length of chunk
             num_spks: the number of speakers
-    '''
+    """
 
-    def __init__(self, in_channels, out_channels, hidden_channels,
-                 rnn_type, norm, dropout,
-                 bidirectional, num_layers, K, mulcat):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        hidden_channels,
+        rnn_type,
+        norm,
+        dropout,
+        bidirectional,
+        num_layers,
+        K,
+        mulcat,
+    ):
         super(Dual_Path_RNN, self).__init__()
         self.K = K
         self.num_layers = num_layers
@@ -252,14 +320,22 @@ class Dual_Path_RNN(nn.Module):
 
         self.dual_rnn = nn.ModuleList([])
         for i in range(num_layers):
-            self.dual_rnn.append(Dual_RNN_Block(out_channels, hidden_channels,
-                                     rnn_type=rnn_type, norm=norm, dropout=dropout,
-                                     bidirectional=bidirectional, mulcat=mulcat))
+            self.dual_rnn.append(
+                Dual_RNN_Block(
+                    out_channels,
+                    hidden_channels,
+                    rnn_type=rnn_type,
+                    norm=norm,
+                    dropout=dropout,
+                    bidirectional=bidirectional,
+                    mulcat=mulcat,
+                )
+            )
 
     def forward(self, x):
-        '''
+        """
            x: [B, N, L]
-        '''
+        """
         # [B, N, L]
         x = self.norm(x)
         # [B, N, L]
@@ -274,36 +350,37 @@ class Dual_Path_RNN(nn.Module):
         return xs, gap
 
     def _Segmentation(self, input, K):
-        '''
+        """
            the segmentation stage splits
            K: chunks of length
            P: hop size
            input: [B, N, L]
            output: [B, N, K, S]
-        '''
+        """
         B, N, L = input.shape
         P = K // 2
         input, gap = self._padding(input, K)
         # [B, N, K, S]
         input1 = input[:, :, :-P].contiguous().view(B, N, -1, K)
         input2 = input[:, :, P:].contiguous().view(B, N, -1, K)
-        input = torch.cat([input1, input2], dim=3).view(
-            B, N, -1, K).transpose(2, 3)
+        input = torch.cat([input1, input2], dim=3).view(B, N, -1, K).transpose(2, 3)
 
         return input.contiguous(), gap
 
     def _padding(self, input, K):
-        '''
+        """
            padding the audio times
            K: chunks of length
            P: hop size
            input: [B, N, L]
-        '''
+        """
         B, N, L = input.shape
         P = K // 2
         gap = K - (P + L % K) % K
         if gap > 0:
-            pad = torch.Tensor(torch.zeros(B, N, gap)).to(input.get_device())#.type(input.type())
+            pad = torch.Tensor(torch.zeros(B, N, gap)).to(
+                input.get_device()
+            )  # .type(input.type())
             input = torch.cat([input, pad], dim=2)
 
         _pad = torch.Tensor(torch.zeros(B, N, P)).to(input.get_device())
@@ -311,13 +388,14 @@ class Dual_Path_RNN(nn.Module):
 
         return input, gap
 
+
 class Decoder(nn.ConvTranspose1d):
-    '''
+    """
         Decoder of the TasNet
         This module can be seen as the gradient of Conv1d with respect to its input. 
         It is also known as a fractionally-strided convolution 
         or a deconvolution (although it is not an actual deconvolution operation).
-    '''
+    """
 
     def __init__(self, *args, **kwargs):
         super(Decoder, self).__init__(*args, **kwargs)
@@ -327,8 +405,7 @@ class Decoder(nn.ConvTranspose1d):
         x: [B, N, L]
         """
         if x.dim() not in [2, 3]:
-            raise RuntimeError("{} accept 3/4D tensor as input".format(
-                self.__name__))
+            raise RuntimeError("{} accept 3/4D tensor as input".format(self.__name__))
         x = super().forward(x if x.dim() == 3 else torch.unsqueeze(x, 1))
 
         if torch.squeeze(x).dim() == 1:
@@ -337,33 +414,39 @@ class Decoder(nn.ConvTranspose1d):
             x = torch.squeeze(x)
         return x
 
+
 class SingleDecoder(nn.Module):
-    def __init__(self, in_channels, out_channels, hidden_channels, kernel_size, num_spks):
+    def __init__(
+        self, in_channels, out_channels, hidden_channels, kernel_size, num_spks
+    ):
         super(SingleDecoder, self).__init__()
         self.out_channels = out_channels
         self.num_spks = num_spks
-        self.conv2d = nn.Conv2d(
-            out_channels, out_channels * num_spks, kernel_size=1)
+        self.conv2d = nn.Conv2d(out_channels, out_channels * num_spks, kernel_size=1)
         self.end_conv1x1 = nn.Conv1d(out_channels, in_channels, 1, bias=False)
         self.prelu = nn.PReLU()
         self.activation = nn.ReLU()
-         # gated output layer
-        self.output = nn.Sequential(nn.Conv1d(out_channels, out_channels, 1),
-                                    nn.Tanh()
-                                    )
-        self.output_gate = nn.Sequential(nn.Conv1d(out_channels, out_channels, 1),
-                                         nn.Sigmoid()
-                                         )
-        self.decoder = Decoder(in_channels, out_channels=1, kernel_size=kernel_size, stride=kernel_size//2, bias=False)
+        # gated output layer
+        self.output = nn.Sequential(nn.Conv1d(out_channels, out_channels, 1), nn.Tanh())
+        self.output_gate = nn.Sequential(
+            nn.Conv1d(out_channels, out_channels, 1), nn.Sigmoid()
+        )
+        self.decoder = Decoder(
+            in_channels,
+            out_channels=1,
+            kernel_size=kernel_size,
+            stride=kernel_size // 2,
+            bias=False,
+        )
 
     def forward(self, x, e, gap):
-        '''
+        """
             args:
                 x: [num_stages, out_channels, K, S]
                 e: [in_channels, L]
             outputs:
                 x: [num_stages, num_spks, T]
-        '''
+        """
         x = self.prelu(x)
         # [num_stages, num_spks * out_channels, K, S]
         x = self.conv2d(x)
@@ -390,12 +473,12 @@ class SingleDecoder(nn.Module):
         return x
 
     def _over_add(self, input, gap):
-        '''
+        """
            Merge sequence
            input: [B, N, K, S]
            gap: padding length
            output: [B, N, L]
-        '''
+        """
         B, N, K, S = input.shape
         P = K // 2
         # [B, N, S, K]
@@ -410,8 +493,18 @@ class SingleDecoder(nn.Module):
 
         return input
 
+
 class MultiDecoder(nn.Module):
-    def __init__(self, in_channels, out_channels, hidden_channels, kernel_size, num_layers, max_spks, multiloss):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        hidden_channels,
+        kernel_size,
+        num_layers,
+        max_spks,
+        multiloss,
+    ):
         super(MultiDecoder, self).__init__()
         self.multiloss = multiloss
         self.num_layers = num_layers
@@ -420,8 +513,12 @@ class MultiDecoder(nn.Module):
         self.num_decoders = len(self.num_spks)
         self.decoders = nn.ModuleList()
         for num_spks in range(2, max_spks + 1):
-            self.decoders.append(SingleDecoder(in_channels, out_channels, hidden_channels, kernel_size, num_spks))
-        '''
+            self.decoders.append(
+                SingleDecoder(
+                    in_channels, out_channels, hidden_channels, kernel_size, num_spks
+                )
+            )
+        """
             self.conv2d = nn.Conv2d(out_channels, max_spks*out_channels*self.num_decoders, kernel_size=1)
             self.end_conv1x1 = nn.Conv1d(out_channels*self.num_decoders, in_channels*self.num_decoders, 1, groups=self.num_decoders, bias=False)
                     self.prelu = nn.PReLU()
@@ -434,12 +531,13 @@ class MultiDecoder(nn.Module):
                                             nn.Sigmoid()
                                             )
             self.decoder = Decoder(in_channels*self.num_decoders, out_channels=1*self.num_decoders, kernel_size=kernel_size, stride=kernel_size//2, groups=self.num_decoders, bias=False)        
-        '''
-        self.vad = nn.Sequential(nn.Conv2d(out_channels, in_channels, 1),
-                                nn.AdaptiveAvgPool2d(1),
-                                nn.ReLU(),
-                                nn.Conv2d(in_channels, self.num_decoders, 1)
-                                )
+        """
+        self.vad = nn.Sequential(
+            nn.Conv2d(out_channels, in_channels, 1),
+            nn.AdaptiveAvgPool2d(1),
+            nn.ReLU(),
+            nn.Conv2d(in_channels, self.num_decoders, 1),
+        )
 
     def forward(self, x, e, gap, num_sources, oracle):
         """
@@ -456,7 +554,7 @@ class MultiDecoder(nn.Module):
         num_sources = num_sources.long()
         B, N, K, S = x[0].size()
         num_stages = self.num_layers if self.multiloss and self.training else 1
-        if not oracle: # if running test script
+        if not oracle:  # if running test script
             assert num_stages == 1
 
         # [num_stages * B, out_channels, K, S]
@@ -466,7 +564,9 @@ class MultiDecoder(nn.Module):
             x = x[-1]
 
         # [B, num_stages, num_decoders]
-        vad = self.vad(x).squeeze().view(num_stages, B, -1).transpose(0, 1) # only logits
+        vad = (
+            self.vad(x).squeeze().view(num_stages, B, -1).transpose(0, 1)
+        )  # only logits
 
         # [B, num_stages, out_channels, K, S]
         x = x.view(num_stages, B, N, K, S).transpose(0, 1)
@@ -477,7 +577,7 @@ class MultiDecoder(nn.Module):
             decoder_idx = num_sources[i] - 2 if oracle else vad[i][0].argmax(0)
             decoder = self.decoders[decoder_idx]
             signals_list.append(decoder(x[i], e[i], gap))
-            
+
         # padding for multi-gpu
         T = signals_list[0].size(-1)
         signal_tensor = torch.zeros(B, num_stages, self.max_spks, T).to(x.get_device())
@@ -485,7 +585,7 @@ class MultiDecoder(nn.Module):
             num_spks = num_sources[i] if oracle else vad[i][0].argmax(0) + 2
             signal_tensor[i, :, :num_spks, :] = signals_list[i]
 
-        ''' grouped convolution
+        """ grouped convolution
             # [B, #stages, max_spks, num_decoders, T]
             x = self.decode(x, e, gap, num_stages)
             signals = []
@@ -496,9 +596,9 @@ class MultiDecoder(nn.Module):
                 signals.append(decoder_signal)
 
             # print('device %d used %.3f' % (torch.cuda.current_device(), time.time()-startt))
-        '''
+        """
         return signal_tensor, vad
-    
+
     # def decode(self, x, e, gap, num_stages):
     #     '''
     #         args:
@@ -555,8 +655,9 @@ class MultiDecoder(nn.Module):
 
     #     return input
 
+
 class Dual_RNN_model(nn.Module):
-    '''
+    """
        model of Dual Path RNN
        input:
             in_channels: The number of expected features in the input x
@@ -572,22 +673,53 @@ class Dual_RNN_model(nn.Module):
             num_layers: number of Dual-Path-Block
             K: the length of chunk
             num_spks: the number of speakers
-    '''
-    def __init__(self, in_channels, out_channels, hidden_channels,
-                 kernel_size, rnn_type, norm, dropout,
-                 bidirectional, num_layers, K, num_spks, multiloss, mulcat):
-        super(Dual_RNN_model,self).__init__()
-        self.encoder = Encoder(kernel_size=kernel_size,out_channels=in_channels)
-        self.separation = Dual_Path_RNN(in_channels, out_channels, hidden_channels,
-                 rnn_type=rnn_type, norm=norm, dropout=dropout,
-                 bidirectional=bidirectional, num_layers=num_layers, K=K, mulcat=mulcat)
-        self.decoder = MultiDecoder(in_channels, out_channels, hidden_channels, kernel_size, num_layers, num_spks, multiloss)
-    
+    """
+
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        hidden_channels,
+        kernel_size,
+        rnn_type,
+        norm,
+        dropout,
+        bidirectional,
+        num_layers,
+        K,
+        num_spks,
+        multiloss,
+        mulcat,
+    ):
+        super(Dual_RNN_model, self).__init__()
+        self.encoder = Encoder(kernel_size=kernel_size, out_channels=in_channels)
+        self.separation = Dual_Path_RNN(
+            in_channels,
+            out_channels,
+            hidden_channels,
+            rnn_type=rnn_type,
+            norm=norm,
+            dropout=dropout,
+            bidirectional=bidirectional,
+            num_layers=num_layers,
+            K=K,
+            mulcat=mulcat,
+        )
+        self.decoder = MultiDecoder(
+            in_channels,
+            out_channels,
+            hidden_channels,
+            kernel_size,
+            num_layers,
+            num_spks,
+            multiloss,
+        )
+
     def forward(self, x, num_sources, oracle):
-        '''
+        """
            x: [B, L]
            num_sources: [B]
-        '''
+        """
         num_sources = num_sources.long()
         assert x.shape[0] == num_sources.shape[0]
         # [B, N, L]
@@ -600,33 +732,55 @@ class Dual_RNN_model(nn.Module):
         return signals, vad
 
     @staticmethod
-    def serialize(model, optimizer, epoch, tr_loss=None, cv_loss=None, val_no_impv=None, random_state=None):
+    def serialize(
+        model,
+        optimizer,
+        epoch,
+        tr_loss=None,
+        cv_loss=None,
+        val_no_impv=None,
+        random_state=None,
+    ):
         package = {
             # state
-            'state_dict': model.state_dict(),
-            'optim_dict': optimizer.state_dict(),
-            'epoch': epoch
+            "state_dict": model.state_dict(),
+            "optim_dict": optimizer.state_dict(),
+            "epoch": epoch,
         }
         if tr_loss is not None:
-            package['tr_loss'] = tr_loss
-            package['cv_loss'] = cv_loss
-            package['val_no_impv'] = val_no_impv
-            package['random_state'] = random_state
+            package["tr_loss"] = tr_loss
+            package["cv_loss"] = cv_loss
+            package["val_no_impv"] = val_no_impv
+            package["random_state"] = random_state
         return package
 
 
-
 if __name__ == "__main__":
-    devices = [0, ]
-    rnn = torch.nn.DataParallel(Dual_RNN_model(256, 64, 128, kernel_size=8, rnn_type='LSTM', norm='ln', dropout=0.0, bidirectional=True, num_layers=6, K=125, num_spks=5, multiloss=True, mulcat=(True, True)), device_ids=devices).cuda(0)
+    rnn = Dual_RNN_model(
+        in_channels=256,
+        out_channels=64,
+        hidden_channels=128,
+        kernel_size=8,
+        rnn_type="LSTM",
+        norm="ln",
+        dropout=0.0,
+        bidirectional=True,
+        num_layers=6,
+        K=125,
+        num_spks=5,
+        multiloss=True,
+        mulcat=(True, True),
+    ).cuda(0)
     x = torch.randn(6, 32000).cuda(0)
     num_sources = torch.Tensor([2, 2, 3, 3, 4, 5])
     audio, vad = rnn(x, num_sources, oracle=True)
     print(vad.shape)
+
     def check_parameters(net):
-        '''
+        """
             Returns module parameters. Mb
-        '''
+        """
         parameters = sum(param.numel() for param in net.parameters())
-        return parameters / 10**6
-    print("{:.3f}".format(check_parameters(rnn)*1000000))
+        return parameters / 10 ** 6
+
+    print("{:.3f}".format(check_parameters(rnn) * 1000000))
