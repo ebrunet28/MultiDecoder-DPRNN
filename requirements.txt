@@ -3,3 +3,7 @@ mir_eval
 visdom
 torch==1.7.1
 torchaudio==0.7.2
+pandas
+sphfile
+tqdm>=4.42.0
+
