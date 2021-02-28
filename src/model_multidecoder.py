@@ -617,9 +617,9 @@ class Dual_RNN_model(nn.Module):
 
 
 if __name__ == "__main__":
-    devices = [1, 2, 3]
-    rnn = torch.nn.DataParallel(Dual_RNN_model(256, 64, 128, kernel_size=8, rnn_type='LSTM', norm='ln', dropout=0.0, bidirectional=True, num_layers=6, K=125, num_spks=5, multiloss=True, mulcat=(True, True)), device_ids=devices).cuda(1)
-    x = torch.randn(6, 32000).cuda(1)
+    devices = [0, ]
+    rnn = torch.nn.DataParallel(Dual_RNN_model(256, 64, 128, kernel_size=8, rnn_type='LSTM', norm='ln', dropout=0.0, bidirectional=True, num_layers=6, K=125, num_spks=5, multiloss=True, mulcat=(True, True)), device_ids=devices).cuda(0)
+    x = torch.randn(6, 32000).cuda(0)
     num_sources = torch.Tensor([2, 2, 3, 3, 4, 5])
     audio, vad = rnn(x, num_sources, oracle=True)
     print(vad.shape)
